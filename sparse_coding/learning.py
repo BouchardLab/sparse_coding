@@ -61,12 +61,12 @@ def f_df(D_flat, infer_method, shape, Xt, lambd):
     return cost.detach().cpu().numpy().astype(float), grad.detach().cpu().numpy().astype(float)
 
 
-def callback(infer_method, D_flat, shape, Xt, lambd):
+def callback(D_flat, infer_method, shape, Xt, lambd):
     D_flatt = torch.tensor(D_flat, dtype=Xt.dtype, device=Xt.device)
     Dto = D_flatt.reshape(shape)
     Dto_norm = torch.norm(Dto, dim=1, keepdim=True)
     Dt = Dto / Dto_norm
-    At = transform(Xt, Dt, lambd)
+    At = infer(infer_method, Xt, Dt, lambd)
     cost = torch.sum((Xt - At.mm(Dt))**2, dim=1).mean()
     print('learn', cost.detach().cpu().numpy())
 
@@ -79,11 +79,12 @@ def bfgs(infer_method, X, D, lambd, verbose=False):
         _callback = lambda params: callback(params, *args)
         callback(Dnp, *args)
     opt = minimize(f_df, Dnp, args=args, jac=True, method='L-BFGS-B',
-                  callback=_callback)
+                   callback=_callback)
     return opt.x.reshape(*D.shape)
 
 
-def torchoptim(infer_method, Xt, D, lambd, batch_size=256, max_epochs=10, patience_batches=None, learn_tol=1e-4):
+def torchoptim(infer_method, Xt, D, lambd, batch_size=256, max_epochs=10,
+               patience_batches=None, learn_tol=1e-4):
     Dt = torch.tensor(D, requires_grad=True, device=Xt.device, dtype=Xt.dtype)
     opt = optim.Adam([Dt])
     batches = np.array(torch.split(Xt, batch_size), dtype=object)
@@ -118,5 +119,5 @@ def torchoptim(infer_method, Xt, D, lambd, batch_size=256, max_epochs=10, patien
             if patience >= patience_batches:
                 break
         if patience >= patience_batches:
-                break
+            break
     return Dt.detach().cpu().numpy()
