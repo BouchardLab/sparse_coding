@@ -1,0 +1,6 @@
+channels:
+  - pytorch
+dependencies:
+  - numpy
+  - scipy
+  - pytorch
