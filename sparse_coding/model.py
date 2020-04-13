@@ -37,4 +37,6 @@ class SparseCoding(object):
         return self
 
     def transform(self, X):
-        return infer(self.infer_method, X, self.D, self.lambd, **self.kwargs)
+        X = torch.tensor(X, dtype=self.dtype, device=self.device)
+        D = torch.tensor(self.D, dtype=self.dtype, device=self.device)
+        return infer(self.infer_method, X, D, self.lambd, **self.kwargs).detach().cpu().numpy()

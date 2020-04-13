@@ -36,13 +36,13 @@ def learn(learn_method, infer_method, X, D, lambd, *args):
         D = torchoptim(infer_method, X, D, lambd, *args)
     else:
         raise ValueError
-    return D
+    return D / np.linalg.norm(D, axis=1, keepdims=True)
 
 
 def f(infer_method, D, X, lambd, verbose=False):
     D_norm = torch.norm(D, dim=1, keepdim=True)
     D = D / D_norm
-    A = infer(infer_method, X, D.detach(), lambd)
+    A = infer(infer_method, X, D.detach(), lambd, verbose=verbose)
     cost = torch.sum((X - A.mm(D))**2, dim=1).mean()
     if verbose:
         print('learn', cost.detach().cpu().numpy())
@@ -83,11 +83,14 @@ def bfgs(infer_method, X, D, lambd, verbose=False):
     return opt.x.reshape(*D.shape)
 
 
-def torchoptim(infer_method, Xt, D, lambd, batch_size=256, max_epochs=10, patience_batches=100, learn_tol=1e-4):
+def torchoptim(infer_method, Xt, D, lambd, batch_size=256, max_epochs=10, patience_batches=None, learn_tol=1e-4):
     Dt = torch.tensor(D, requires_grad=True, device=Xt.device, dtype=Xt.dtype)
     opt = optim.Adam([Dt])
     batches = np.array(torch.split(Xt, batch_size), dtype=object)
+    if patience_batches is None:
+        patience_batches = 5 * batches.size
     track_loss = None
+    lowest = np.finfo(float).max
     frac = (patience_batches - 1.) / patience_batches
     patience = 0
     for ep in range(max_epochs):
@@ -98,19 +101,19 @@ def torchoptim(infer_method, Xt, D, lambd, batch_size=256, max_epochs=10, patien
             else:
                 verbose = False
             opt.zero_grad()
-            loss = f(infer_method, Dt, Xt, lambd, verbose)
+            loss = f(infer_method, Dt, b, lambd, verbose)
             loss.backward()
             opt.step()
             loss = loss.detach().cpu().numpy()
             if track_loss is None:
                 track_loss = loss
             else:
-                track_lossp = frac * track_loss + (1. - frac) * loss
-                if (track_loss - track_lossp) / max(1., max(abs(track_loss), abs(track_lossp))) < learn_tol:
+                track_loss = frac * track_loss + (1. - frac) * loss
+                if (lowest - track_loss) / np.max([1., abs(track_loss), abs(lowest)]) < learn_tol:
                     patience += 1
                 else:
                     patience = 0
-                track_loss = track_lossp
+                lowest = min(track_loss, lowest)
             print(ii, patience, loss, track_loss)
             if patience >= patience_batches:
                 break
