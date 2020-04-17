@@ -27,6 +27,8 @@ def infer(method, X, D, lambd, **kwargs):
 
     if method.lower() == 'fista':
         A = fista(X, D, lambd, **kwargs)
+    elif method.lower() == 'ista':
+        A = ista(X, D, lambd, **kwargs)
     elif method.lower() == 'lca':
         A = LCA(X, D, lambd, **kwargs)
     else:
@@ -43,7 +45,7 @@ def fista(X, D, lambd, max_iter=250, tol=1e-4, verbose=False,
     L = 2. * torch.symeig(gram)[0][-1]
     zero = torch.tensor(0., dtype=X.dtype, device=X.device)
     yt = torch.zeros((n_ex, n_act), dtype=X.dtype, device=X.device)
-    xt = torch.zeros_like(yt)
+    xtm = torch.zeros_like(yt)
     if return_history:
         yth = torch.zeros((max_iter, n_ex, n_act), dtype=X.dtype, device=X.device)
     t = 1.
@@ -60,11 +62,47 @@ def fista(X, D, lambd, max_iter=250, tol=1e-4, verbose=False,
                 break
         se = sep
         grad = - (diff).mm(D.t())
-        yt = yt - grad / L
-        xtp = torch.max(abs(yt) - lambd / L, zero) * torch.sign(yt)
+        xt = yt - grad / L
+        xt = torch.max(abs(xt) - lambd / L, zero) * torch.sign(xt)
         t = 0.5 * (1. + np.sqrt(1. + 4 * t**2))
-        yt = xt + (t - 1.) * (xtp - xt) / t
-        xt = xtp
+        yt = xt + (t - 1.) * (xt - xtm) / t
+        xtm = xt
+        if return_history:
+            yth[ii] = yt
+    if verbose:
+        print('inference', ii, seo, sep)
+    if return_history:
+        return yth[:ii]
+    else:
+        return yt
+
+
+def ista(X, D, lambd, max_iter=250, tol=1e-4, verbose=False,
+          return_history=False):
+    n_ex, n_feat = X.shape
+    n_act = D.shape[0]
+
+    gram = D.t().mm(D)
+    L = 2. * torch.symeig(gram)[0][-1]
+    zero = torch.tensor(0., dtype=X.dtype, device=X.device)
+    yt = torch.zeros((n_ex, n_act), dtype=X.dtype, device=X.device)
+    if return_history:
+        yth = torch.zeros((max_iter, n_ex, n_act), dtype=X.dtype, device=X.device)
+
+    se = torch.sum((X)**2, dim=1).mean().detach().cpu().numpy()
+    seo = se
+
+    for ii in range(max_iter):
+        diff = X - yt.mm(D)
+        sep = torch.sum((diff)**2, dim=1).mean() + lambd * abs(yt).sum(dim=1).mean()
+        sep = sep.detach().cpu().numpy()
+        if (se - sep) / max(1., max(abs(se), abs(sep))) < tol:
+            if ii > 0:
+                break
+        se = sep
+        grad = - (diff).mm(D.t())
+        yt = yt - grad / L
+        yt = torch.max(abs(yt) - lambd / L, zero) * torch.sign(yt)
         if return_history:
             yth[ii] = yt
     if verbose:
