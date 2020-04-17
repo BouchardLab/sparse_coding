@@ -8,7 +8,7 @@ from scipy.optimize import minimize
 from .inference import infer
 
 
-def learn(learn_method, infer_method, X, D, lambd, *args):
+def learn(learn_method, infer_method, X, D, lambd, verbose=False, **kwargs):
     """Run sparse coding learning. This function dispatches different methods.
 
     Parameters
@@ -31,9 +31,9 @@ def learn(learn_method, infer_method, X, D, lambd, *args):
     """
 
     if learn_method.lower() == 'bfgs':
-        D = bfgs(infer_method, X, D, lambd, *args)
+        D = bfgs(infer_method, X, D, lambd, verbose=verbose, **kwargs)
     elif learn_method.lower() == 'optim':
-        D = torchoptim(infer_method, X, D, lambd, *args)
+        D = torchoptim(infer_method, X, D, lambd, verbose=verbose, **kwargs)
     else:
         raise ValueError
     return D / np.linalg.norm(D, axis=1, keepdims=True)
@@ -66,7 +66,7 @@ def callback(D_flat, infer_method, shape, Xt, lambd):
     Dto = D_flatt.reshape(shape)
     Dto_norm = torch.norm(Dto, dim=1, keepdim=True)
     Dt = Dto / Dto_norm
-    At = infer(infer_method, Xt, Dt, lambd)
+    At = infer(infer_method, Xt, Dt, lambd, verbose=True)
     cost = torch.sum((Xt - At.mm(Dt))**2, dim=1).mean()
     print('learn', cost.detach().cpu().numpy())
 
@@ -84,7 +84,7 @@ def bfgs(infer_method, X, D, lambd, verbose=False):
 
 
 def torchoptim(infer_method, Xt, D, lambd, batch_size=256, max_epochs=10,
-               patience_batches=None, learn_tol=1e-4):
+               patience_batches=None, learn_tol=1e-4, verbose=False):
     Dt = torch.tensor(D, requires_grad=True, device=Xt.device, dtype=Xt.dtype)
     opt = optim.Adam([Dt])
     batches = np.array(torch.split(Xt, batch_size), dtype=object)
@@ -92,17 +92,17 @@ def torchoptim(infer_method, Xt, D, lambd, batch_size=256, max_epochs=10,
         patience_batches = 5 * batches.size
     track_loss = None
     lowest = np.finfo(float).max
-    frac = (patience_batches - 1.) / patience_batches
+    frac = (batches.size - 1.) / batches.size
     patience = 0
     for ep in range(max_epochs):
         batches = np.random.permutation(batches)
         for ii, b in enumerate(batches):
-            if (ii % 20) == 0:
-                verbose = True
+            if (ii % 20) == 0 and verbose:
+                print_now = True
             else:
-                verbose = False
+                print_now = False
             opt.zero_grad()
-            loss = f(infer_method, Dt, b, lambd, verbose)
+            loss = f(infer_method, Dt, b, lambd, verbose=print_now)
             loss.backward()
             opt.step()
             loss = loss.detach().cpu().numpy()
@@ -115,7 +115,8 @@ def torchoptim(infer_method, Xt, D, lambd, batch_size=256, max_epochs=10,
                 else:
                     patience = 0
                 lowest = min(track_loss, lowest)
-            print(ii, patience, loss, track_loss)
+            if print_now:
+                print(ii, patience, loss, track_loss)
             if patience >= patience_batches:
                 break
         if patience >= patience_batches:

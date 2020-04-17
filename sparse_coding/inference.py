@@ -34,7 +34,8 @@ def infer(method, X, D, lambd, **kwargs):
     return A
 
 
-def fista(X, D, lambd, max_iter=250, tol=1e-4, verbose=False):
+def fista(X, D, lambd, max_iter=250, tol=1e-4, verbose=False,
+          return_history=False):
     n_ex, n_feat = X.shape
     n_act = D.shape[0]
 
@@ -43,6 +44,8 @@ def fista(X, D, lambd, max_iter=250, tol=1e-4, verbose=False):
     zero = torch.tensor(0., dtype=X.dtype, device=X.device)
     yt = torch.zeros((n_ex, n_act), dtype=X.dtype, device=X.device)
     xt = torch.zeros_like(yt)
+    if return_history:
+        yth = torch.zeros((max_iter, n_ex, n_act), dtype=X.dtype, device=X.device)
     t = 1.
 
     se = torch.sum((X)**2, dim=1).mean().detach().cpu().numpy()
@@ -57,25 +60,34 @@ def fista(X, D, lambd, max_iter=250, tol=1e-4, verbose=False):
                 break
         se = sep
         grad = - (diff).mm(D.t())
-        yt -= grad / L
+        yt = yt - grad / L
         xtp = torch.max(abs(yt) - lambd / L, zero) * torch.sign(yt)
         t = 0.5 * (1. + np.sqrt(1. + 4 * t**2))
         yt = xt + (t - 1.) * (xtp - xt) / t
         xt = xtp
+        if return_history:
+            yth[ii] = yt
     if verbose:
         print('inference', ii, seo, sep)
-    return xt
+    if return_history:
+        return yth[:ii]
+    else:
+        return yt
 
 
-def LCA(X, D, lambd, soft=True, max_iter=250, tol=1e-4, verbose=False):
+def LCA(X, D, lambd, soft=True, max_iter=250, tol=1e-4, eta=None, verbose=False,
+        return_history=False):
     n_ex, n_feat = X.shape
     n_act = D.shape[0]
 
     gram = D.mm(D.t())
-    L = 2. * torch.symeig(gram)[0][-1]
-    eta = 1. / L
+    if eta is None:
+        L = 2. * torch.symeig(gram)[0][-1]
+        eta = 1. / L
     u = torch.zeros((n_ex, n_act), dtype=X.dtype, device=X.device)
     s = torch.zeros_like(u)
+    if return_history:
+        sh = torch.zeros((max_iter, n_ex, n_act), dtype=X.dtype, device=X.device)
     c = gram - torch.eye(n_act, dtype=X.dtype, device=X.device)
     b = X.mm(D.t())
     zero = torch.tensor(0., dtype=X.dtype, device=X.device)
@@ -91,6 +103,8 @@ def LCA(X, D, lambd, soft=True, max_iter=250, tol=1e-4, verbose=False):
             s = torch.sign(u) * torch.max(abs(u) - lambd, zero)
         else:
             s = u * (abs(u) > lambd).type(X.dtype)
+        if return_history:
+            sh[ii] = s
 
         diff = X - s.mm(D)
         sep = torch.sum((diff)**2, dim=1).mean() + lambd * abs(s).sum(dim=1).mean()
@@ -101,4 +115,7 @@ def LCA(X, D, lambd, soft=True, max_iter=250, tol=1e-4, verbose=False):
         se = sep
     if verbose:
         print('inference', ii, seo, sep)
-    return s
+    if return_history:
+        return sh[:ii]
+    else:
+        return s
