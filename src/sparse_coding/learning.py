@@ -5,7 +5,7 @@ from torch import optim
 
 from scipy.optimize import minimize
 
-from .inference import infer
+from sparse_coding.inference import infer
 
 
 def learn(learn_method, infer_method, X, D, lambd, verbose=False, **kwargs):

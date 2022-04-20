@@ -1,8 +1,8 @@
 import numpy as np
 import torch
 
-from .inference import infer
-from .learning import learn
+from sparse_coding.inference import infer
+from sparse_coding.learning import learn
 
 
 class SparseCoding(object):

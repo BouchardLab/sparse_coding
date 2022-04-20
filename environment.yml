@@ -4,3 +4,4 @@ dependencies:
   - numpy
   - scipy
   - pytorch
+  - scikit-learn
