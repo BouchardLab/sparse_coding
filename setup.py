@@ -20,4 +20,5 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 setup(
     name='sparse_coding',
     description='Sparse Coding models in pytorch',
-    long_description=long_description)
+    long_description=long_description,
+    package_dir={'':'src'})

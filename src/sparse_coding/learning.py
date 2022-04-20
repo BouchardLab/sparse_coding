@@ -30,7 +30,7 @@ def learn(learn_method, infer_method, X, D, lambd, verbose=False, **kwargs):
         Inferred sparse coefficients.
     """
 
-    if learn_method.lower() == 'bfgs':
+    if learn_method.lower() == 'lbfgsb':
         D = bfgs(infer_method, X, D, lambd, verbose=verbose, **kwargs)
     elif learn_method.lower() == 'optim':
         D = torchoptim(infer_method, X, D, lambd, verbose=verbose, **kwargs)
